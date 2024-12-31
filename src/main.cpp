@@ -1,15 +1,15 @@
 #include <Arduino.h>
+#include <WiFiManager.h>
 #include <WiFi.h>
 #include <Bonezegei_DHT11.h>
 #include <Firebase_ESP_Client.h>
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
 
-#define WIFI_SSID "OPPO A77 Ayush"
-#define WIFI_PASSWORD "123456789"
+// #define WIFI_SSID "OPPO A77 Ayush"
+// #define WIFI_PASSWORD "123456789"
 #define API_KEY "AIzaSyAWMqOfjaS_W2B-Gi9ef2N3Nt8xmTwZNpw"
 #define DATABASE_URL "https://iot-devices-1f8c0-default-rtdb.firebaseio.com/"
-
 
 FirebaseData fbdo;
 FirebaseAuth auth;
@@ -20,7 +20,6 @@ Bonezegei_DHT11 dht(14);
 unsigned long sendDataPrevMillis = 0;
 bool signupOK = false;
 
-
 struct SensorData
 {
   float temperatureC;
@@ -28,18 +27,18 @@ struct SensorData
   int humidity;
   bool success;
 };
-void connectWifi()
-{
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting to Wifi....");
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    Serial.print(".");
-    delay(300);
-  }
-  Serial.print("Connected with IP: ");
-  Serial.println(WiFi.localIP());
-}
+// void connectWifi()
+// {
+//   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+//   Serial.print("Connecting to Wifi....");
+//   while (WiFi.status() != WL_CONNECTED)
+//   {
+//     Serial.print(".");
+//     delay(300);
+//   }
+//   Serial.print("Connected with IP: ");
+//   Serial.println(WiFi.localIP());
+// }
 void configDatabase()
 {
   config.api_key = API_KEY;
@@ -85,8 +84,9 @@ SensorData getDataFromSensor()
   return data;
 }
 
-String floatToString(float value) {
-  char buffer[32]; // Adjust buffer size as needed
+String floatToString(float value)
+{
+  char buffer[32];              // Adjust buffer size as needed
   dtostrf(value, 1, 2, buffer); // Convert float to string with 2 decimal places
   return String(buffer);
 }
@@ -96,7 +96,7 @@ void sendDataToFirebase(float temp)
   String floatString = floatToString(temp);
   Serial.printf("From Function %f", temp);
   Serial.print(temp);
-  
+
   if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
   {
     if (Firebase.RTDB.setInt(&fbdo, "new/path", temp))
@@ -120,8 +120,22 @@ void sendDataToFirebase(float temp)
 void setup()
 {
   Serial.begin(115200);
+  WiFiManager wm;
+  bool res;
+  res = wm.autoConnect("AutoConnectAP", "password");
+  if (!res)
+  {
+    Serial.println("Failed to connect");
+    // ESP.restart();
+  }
+  else
+  {
+    // if you get here you have connected to the WiFi
+    Serial.println("connected...yeey :)");
+  }
   dht.begin();
-  connectWifi();
+  // connectWifi();
+
   configDatabase();
 }
 
@@ -133,4 +147,3 @@ void loop()
   sendDataToFirebase(data.temperatureC);
   delay(3000);
 }
-
