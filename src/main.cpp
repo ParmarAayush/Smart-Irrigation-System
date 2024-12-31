@@ -5,14 +5,21 @@
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
 
+#define WIFI_SSID "OPPO A77 Ayush"
+#define WIFI_PASSWORD "123456789"
+#define API_KEY "AIzaSyAWMqOfjaS_W2B-Gi9ef2N3Nt8xmTwZNpw"
+#define DATABASE_URL "https://iot-devices-1f8c0-default-rtdb.firebaseio.com/"
+
+
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
 Bonezegei_DHT11 dht(14);
 
-// unsigned long sendDataPrevMillis = 0;
+unsigned long sendDataPrevMillis = 0;
 bool signupOK = false;
+
 
 struct SensorData
 {
@@ -21,8 +28,7 @@ struct SensorData
   int humidity;
   bool success;
 };
-
-void connectWifi(String WIFI_SSID, String WIFI_PASSWORD)
+void connectWifi()
 {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to Wifi....");
@@ -34,8 +40,7 @@ void connectWifi(String WIFI_SSID, String WIFI_PASSWORD)
   Serial.print("Connected with IP: ");
   Serial.println(WiFi.localIP());
 }
-
-void configDatabase(String API_KEY, String DATABASE_URL)
+void configDatabase()
 {
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
@@ -47,7 +52,7 @@ void configDatabase(String API_KEY, String DATABASE_URL)
   }
   else
   {
-    Serial.printf("Firebase Authentication Error");
+    Serial.printf("Error From Config Database");
     Serial.printf("%s\n", config.signer.signupError.message.c_str());
   }
 
@@ -67,6 +72,8 @@ SensorData getDataFromSensor()
     data.temperatureC = dht.getTemperature();     //  celsius
     data.temperatureF = dht.getTemperature(true); // fahrenheit if true celsius of false
     data.humidity = dht.getHumidity();
+    Serial.print("Temprature:");
+    Serial.println(data.temperatureC);
   }
   else
   {
@@ -78,11 +85,21 @@ SensorData getDataFromSensor()
   return data;
 }
 
-void sendDataToFirebase()
+String floatToString(float value) {
+  char buffer[32]; // Adjust buffer size as needed
+  dtostrf(value, 1, 2, buffer); // Convert float to string with 2 decimal places
+  return String(buffer);
+}
+
+void sendDataToFirebase(float temp)
 {
-  if (Firebase.ready() && signupOK)
+  String floatString = floatToString(temp);
+  Serial.printf("From Function %f", temp);
+  Serial.print(temp);
+  
+  if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
   {
-    if (Firebase.RTDB.setInt(&fbdo, "new/path", 12.5))
+    if (Firebase.RTDB.setInt(&fbdo, "new/path", temp))
     {
       Serial.println("PASSED");
       Serial.printf("PATH: %s\n", fbdo.dataPath().c_str());
@@ -104,13 +121,16 @@ void setup()
 {
   Serial.begin(115200);
   dht.begin();
-  connectWifi("OPPO A77 Ayush","123456789");
-  configDatabase("AIzaSyAWMqOfjaS_W2B-Gi9ef2N3Nt8xmTwZNpw", "https://iot-devices-1f8c0-default-rtdb.firebaseio.com/");
+  connectWifi();
+  configDatabase();
 }
 
 void loop()
 {
   SensorData data = getDataFromSensor();
-  // sendDataToFirebase();
+  Serial.print("Sensor Data: ");
+  Serial.print(data.temperatureC);
+  sendDataToFirebase(data.temperatureC);
   delay(3000);
 }
+
