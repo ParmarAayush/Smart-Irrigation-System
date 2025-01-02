@@ -6,6 +6,7 @@
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
 
+String USER_NAME;
 #define USER_EMAIL "ayush@gmail.com"
 #define USER_PASSWORD "ayush@123"
 #define API_KEY "AIzaSyAWMqOfjaS_W2B-Gi9ef2N3Nt8xmTwZNpw"
@@ -29,11 +30,16 @@ struct SensorData
 };
 
 // helper functions
-String floatToString(float value)
+String extractNameFromEmail(const String &email)
 {
-  char buffer[32];              // Adjust buffer size as needed
-  dtostrf(value, 1, 2, buffer); // Convert float to string with 2 decimal places
-  return String(buffer);
+  int atIndex = email.indexOf('@');
+  if (atIndex == -1)
+  {
+    return ""; // Invalid email address
+  }
+
+  String name = email.substring(0, atIndex);
+  return name;
 }
 
 void connectWifi()
@@ -86,15 +92,14 @@ void authenticateUser()
   Serial.print("User Authenticated");
 }
 
-void sendDataToFirestore(float temp, float humidity)
+void sendDataToFirestore(String label, float data)
 {
-  Serial.printf("\nSend to firestore => Temprature %0.2f and Humidity %0.2f ", temp, humidity); // 18
+  Serial.printf("\nSend to firestore => %s %0.2f", label, data); // 18
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 60000 || sendDataPrevMillis == 0))
   {
     FirebaseJson content;
-    FirebaseJson content2;
-    String docTempPath = "Soil/Temprature" + String(fireStoreCount);
-    content.set("fields/temprature/doubleValue", temp);
+    String docTempPath = USER_NAME + "/" + USER_EMAIL + "/Soil/" + label + String(fireStoreCount);
+    content.set("fields/" + label + "/doubleValue", data);
 
     Serial.print("Create a document... ");
     if (Firebase.Firestore.createDocument(&fbdo, "iot-devices-1f8c0", "" /* databaseId can be (default) or empty */, docTempPath.c_str(), content.raw()))
@@ -106,40 +111,18 @@ void sendDataToFirestore(float temp, float humidity)
     {
       Serial.println(fbdo.errorReason());
     }
-    String docHumidityPath = "Soil/Humidity" + String(fireStoreCount);
-    content2.set("fields/humidity/integerValue", humidity);
-    fireStoreCount++;
-    if (Firebase.Firestore.createDocument(&fbdo, "iot-devices-1f8c0", "" /* databaseId can be (default) or empty */, docHumidityPath.c_str(), content2.raw()))
-    {
-
-      Serial.printf("ok\n%s\n\n", fbdo.payload().c_str());
-    }
-    else
-    {
-      Serial.println(fbdo.errorReason());
-    }
   }
 }
 
-void sendDataToFirebase(float temp, float humidity)
+void sendDataToFirebase(String label, float data)
 {
-  Serial.printf("\nSend to RTDB      => Temprature %0.2f and Humidity %0.2f ", temp, humidity); // 13
+  Serial.printf("\nSend to RTDB      => %s %0.2f ", label, data); // 13
   if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
   {
     // send temprature data
-    if (Firebase.RTDB.setInt(&fbdo, "Soil/temprature", temp))
+    if (Firebase.RTDB.setInt(&fbdo, "Soil/" + label, data))
     {
       Serial.println("\nPASSED");
-    }
-    else
-    {
-      Serial.println("FAILED");
-      Serial.printf("REASON: %s\n", fbdo.errorReason().c_str());
-    }
-    // send humidity data
-    if (Firebase.RTDB.setInt(&fbdo, "Soil/humidity", humidity))
-    {
-      Serial.println("PASSED");
     }
     else
     {
@@ -173,7 +156,7 @@ SensorData getDataFromSensor()
     data.humidity = -1;
     Serial.printf("Failed To sense data");
   }
-  Serial.printf("\nSensor Read       => Temprature %0.2f and Humidity %d ", data.temperatureC, data.humidity); // 12
+  Serial.printf("\nSensor Read       => Temprature %0.2f and Humidity => %d ", data.temperatureC, data.humidity); // 12
   return data;
 }
 
@@ -184,6 +167,7 @@ void setup()
   delay(1000);
   configDatabase();
   authenticateUser();
+  USER_NAME = extractNameFromEmail(USER_EMAIL);
   delay(4000);
 }
 
@@ -197,10 +181,14 @@ void loop()
   }
 
   SensorData data = getDataFromSensor();
-  sendDataToFirebase(data.temperatureC, data.humidity);
-  if (fireStoreCount < 10)
+  if (fireStoreCount < 4)
   {
-    sendDataToFirestore(data.temperatureC, data.humidity);
+    sendDataToFirebase("temprature", data.temperatureC);
+    sendDataToFirebase("humidity", data.humidity);
+
+    sendDataToFirestore("Temprature", data.temperatureC);
+    sendDataToFirestore("Humidity", data.humidity);
   }
-  delay(3000);
+  fireStoreCount++;
+  delay(6000);
 }
