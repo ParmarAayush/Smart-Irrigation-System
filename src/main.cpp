@@ -24,7 +24,6 @@ int fireStoreCount = 1;
 struct SensorData
 {
   float temperatureC;
-  float temperatureF;
   int humidity;
   bool success;
 };
@@ -87,16 +86,16 @@ void authenticateUser()
   Serial.print("User Authenticated");
 }
 
-void sendDataToFirestore(float temp, int humidity)
+void sendDataToFirestore(float temp, float humidity)
 {
-  Serial.printf("\n Firestore Temprature %0.2f and Humidity %0.2f and int %d ", temp, humidity, humidity);
+  Serial.printf("\nSend to firestore => Temprature %0.2f and Humidity %0.2f ", temp, humidity); // 18
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 60000 || sendDataPrevMillis == 0))
   {
     FirebaseJson content;
     FirebaseJson content2;
     String docTempPath = "Soil/Temprature" + String(fireStoreCount);
     content.set("fields/temprature/doubleValue", temp);
-    
+
     Serial.print("Create a document... ");
     if (Firebase.Firestore.createDocument(&fbdo, "iot-devices-1f8c0", "" /* databaseId can be (default) or empty */, docTempPath.c_str(), content.raw()))
     {
@@ -124,15 +123,13 @@ void sendDataToFirestore(float temp, int humidity)
 
 void sendDataToFirebase(float temp, float humidity)
 {
-  Serial.printf("\n Real Time: Temprature %0.2f and Humidity %0.2f and int %d ", temp, humidity, humidity);
+  Serial.printf("\nSend to RTDB      => Temprature %0.2f and Humidity %0.2f ", temp, humidity); // 13
   if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
   {
     // send temprature data
     if (Firebase.RTDB.setInt(&fbdo, "Soil/temprature", temp))
     {
       Serial.println("\nPASSED");
-      // Serial.printf("PATH: %s\n", fbdo.dataPath().c_str());
-      // Serial.printf("TYPE: %s\n", fbdo.dataType().c_str());
     }
     else
     {
@@ -160,22 +157,23 @@ void sendDataToFirebase(float temp, float humidity)
 
 SensorData getDataFromSensor()
 {
+  Serial.printf("\n-------------------------------------------------------------");
+  dht.begin();
   SensorData data;
   data.success = dht.getData();
 
   if (data.success)
   {
-    data.temperatureC = dht.getTemperature();     //  celsius
-    data.temperatureF = dht.getTemperature(true); // fahrenheit if true celsius of false
+    data.temperatureC = dht.getTemperature(); //  celsius
     data.humidity = dht.getHumidity();
   }
   else
   {
     data.temperatureC = -1;
-    data.temperatureF = -1;
     data.humidity = -1;
     Serial.printf("Failed To sense data");
   }
+  Serial.printf("\nSensor Read       => Temprature %0.2f and Humidity %d ", data.temperatureC, data.humidity); // 12
   return data;
 }
 
@@ -187,7 +185,6 @@ void setup()
   configDatabase();
   authenticateUser();
   delay(4000);
-  dht.begin();
 }
 
 void loop()
@@ -200,8 +197,8 @@ void loop()
   }
 
   SensorData data = getDataFromSensor();
-  // sendDataToFirebase(data.temperatureC, data.humidity);
-  if (fireStoreCount < 4)
+  sendDataToFirebase(data.temperatureC, data.humidity);
+  if (fireStoreCount < 10)
   {
     sendDataToFirestore(data.temperatureC, data.humidity);
   }
