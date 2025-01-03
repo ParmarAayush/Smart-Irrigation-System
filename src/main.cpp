@@ -5,6 +5,7 @@
 #include <Firebase_ESP_Client.h>
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
+#include "time.h"
 
 String USER_NAME;
 #define USER_EMAIL "ayush@gmail.com"
@@ -21,6 +22,10 @@ Bonezegei_DHT11 dht(14);
 unsigned long sendDataPrevMillis = 0;
 bool signupOK = false;
 int fireStoreCount = 1;
+
+const char *ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 19800;
+const int daylightOffset_sec = 3600;
 
 struct SensorData
 {
@@ -40,6 +45,17 @@ String extractNameFromEmail(const String &email)
 
   String name = email.substring(0, atIndex);
   return name;
+}
+
+void printLocalTime()
+{
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo))
+  {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
 }
 
 void connectWifi()
@@ -94,39 +110,38 @@ void authenticateUser()
 
 void sendDataToFirestore(String label, float data)
 {
-  Serial.printf("\nSend to firestore => %s %0.2f", label, data); // 18
+  Serial.printf("Send to firestore => %s %0.2f", label, data); // 18
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 60000 || sendDataPrevMillis == 0))
   {
     FirebaseJson content;
     String docTempPath = USER_NAME + "/" + USER_EMAIL + "/Soil/" + label + String(fireStoreCount);
     content.set("fields/" + label + "/doubleValue", data);
 
-    Serial.print("Create a document... ");
     if (Firebase.Firestore.createDocument(&fbdo, "iot-devices-1f8c0", "" /* databaseId can be (default) or empty */, docTempPath.c_str(), content.raw()))
     {
-
-      Serial.printf("ok\n%s\n\n", fbdo.payload().c_str());
+      Serial.printf(" => Recived to Firestore");
+      // Serial.printf("ok\n%s\n\n", fbdo.payload().c_str());
     }
     else
     {
-      Serial.println(fbdo.errorReason());
+      // Serial.println(fbdo.errorReason());
     }
   }
 }
 
 void sendDataToFirebase(String label, float data)
 {
-  Serial.printf("\nSend to RTDB      => %s %0.2f ", label, data); // 13
+  Serial.printf("Send to RTDB      => %s %0.2f ", label, data); // 13
   if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
   {
     // send temprature data
     if (Firebase.RTDB.setInt(&fbdo, "Soil/" + label, data))
     {
-      Serial.println("\nPASSED");
+      Serial.println(" => Recived to RTDB");
     }
     else
     {
-      Serial.println("FAILED");
+      Serial.println(" => Not Recived to RTDB");
       Serial.printf("REASON: %s\n", fbdo.errorReason().c_str());
     }
   }
@@ -135,7 +150,6 @@ void sendDataToFirebase(String label, float data)
     Serial.println("FAILED");
     Serial.printf("REASON: %s\n", fbdo.errorReason().c_str());
   }
-  Serial.print("\n");
 }
 
 SensorData getDataFromSensor()
@@ -163,6 +177,7 @@ SensorData getDataFromSensor()
 void setup()
 {
   Serial.begin(115200);
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   connectWifi();
   delay(1000);
   configDatabase();
@@ -181,12 +196,14 @@ void loop()
   }
 
   SensorData data = getDataFromSensor();
+  printLocalTime();
   if (fireStoreCount < 4)
   {
     sendDataToFirebase("temprature", data.temperatureC);
     sendDataToFirebase("humidity", data.humidity);
 
     sendDataToFirestore("Temprature", data.temperatureC);
+    Serial.printf("\n");
     sendDataToFirestore("Humidity", data.humidity);
   }
   fireStoreCount++;
