@@ -31,6 +31,7 @@ struct SensorData
 {
   float temperatureC;
   int humidity;
+  float moisture;
   bool success;
 };
 
@@ -47,15 +48,18 @@ String extractNameFromEmail(const String &email)
   return name;
 }
 
-void printLocalTime()
+String printLocalTime()
 {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
   {
-    Serial.println("Failed to obtain time");
-    return;
+    // Serial.println("Failed to obtain time");
+    return "";
   }
-  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+  // Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+  char timeStr[32];
+  strftime(timeStr, sizeof(timeStr), "%d%B%Y::%H:%M", &timeinfo);
+  return String(timeStr);
 }
 
 void connectWifi()
@@ -108,14 +112,19 @@ void authenticateUser()
   Serial.print("User Authenticated");
 }
 
-void sendDataToFirestore(String label, float data)
+void sendDataToFirestore(String label, String key, float data, int dataCount)
 {
   Serial.printf("Send to firestore => %s %0.2f", label, data); // 18
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 60000 || sendDataPrevMillis == 0))
   {
     FirebaseJson content;
-    String docTempPath = USER_NAME + "/" + USER_EMAIL + "/Soil/" + label + String(fireStoreCount);
-    content.set("fields/" + label + "/doubleValue", data);
+    // /ayush/Slots/Slot 1/Soil/Data/09January2025::11:33:10H1
+    // String docTempPath = USER_NAME + "/" + USER_EMAIL + "/Soil/" + label + key.charAt(0) + dataCount;
+    // String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + key.charAt(0) + dataCount;
+    String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + key.charAt(0) + dataCount + "/" + key;
+    content.set("fields/" + key + "/doubleValue", data);
+
+
 
     if (Firebase.Firestore.createDocument(&fbdo, "iot-devices-1f8c0", "" /* databaseId can be (default) or empty */, docTempPath.c_str(), content.raw()))
     {
@@ -124,7 +133,8 @@ void sendDataToFirestore(String label, float data)
     }
     else
     {
-      // Serial.println(fbdo.errorReason());
+      Serial.printf(" => Not Recived to Firestore");
+      Serial.println(fbdo.errorReason());
     }
   }
 }
@@ -196,16 +206,27 @@ void loop()
   }
 
   SensorData data = getDataFromSensor();
-  printLocalTime();
-  if (fireStoreCount < 4)
+  String timeSquare = printLocalTime();
+  Serial.print(timeSquare);
+  if (timeSquare == "")
   {
-    sendDataToFirebase("temprature", data.temperatureC);
-    sendDataToFirebase("humidity", data.humidity);
-
-    sendDataToFirestore("Temprature", data.temperatureC);
-    Serial.printf("\n");
-    sendDataToFirestore("Humidity", data.humidity);
+    Serial.print(timeSquare);
+    Serial.printf("Failed to get time\n");
   }
-  fireStoreCount++;
+  else
+  {
+    Serial.printf("\n");
+    // Serial.print(timeSquare);
+    if (fireStoreCount < 2)
+    {
+      sendDataToFirebase("temprature", data.temperatureC);
+      sendDataToFirebase("humidity", data.humidity);
+
+      sendDataToFirestore(timeSquare, "Temprature", data.temperatureC, fireStoreCount);
+      Serial.printf("\n");
+      sendDataToFirestore(timeSquare, "Humidity", data.humidity, fireStoreCount);
+    }
+    fireStoreCount++;
+  }
   delay(6000);
 }
