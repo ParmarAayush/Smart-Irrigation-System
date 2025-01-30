@@ -18,6 +18,9 @@ FirebaseAuth auth;
 FirebaseConfig config;
 
 Bonezegei_DHT11 dht(14);
+int soil_moisture_sensor_pin = 34;
+int DRY_VALUE = 3200; // dry value for soil moisture
+int WET_VALUE = 1200; // wet value for soil moisture
 
 unsigned long sendDataPrevMillis = 0;
 bool signupOK = false;
@@ -31,7 +34,7 @@ struct SensorData
 {
   float temperatureC;
   int humidity;
-  float moisture;
+  int moisture;
   bool success;
 };
 
@@ -117,14 +120,14 @@ void sendDataToFirestore(String label, String key, float data, int dataCount)
   Serial.printf("Send to firestore => %s %0.2f", label, data); // 18
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 60000 || sendDataPrevMillis == 0))
   {
+    String tempStr = "Data";
     FirebaseJson content;
     // /ayush/Slots/Slot 1/Soil/Data/09January2025::11:33:10H1
     // String docTempPath = USER_NAME + "/" + USER_EMAIL + "/Soil/" + label + key.charAt(0) + dataCount;
     // String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + key.charAt(0) + dataCount;
-    String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + key.charAt(0) + dataCount + "/" + key;
+    // String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + key.charAt(0) + dataCount + "/" + key;
+    String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + tempStr.charAt(0) + dataCount + "/" + key;
     content.set("fields/" + key + "/doubleValue", data);
-
-
 
     if (Firebase.Firestore.createDocument(&fbdo, "iot-devices-1f8c0", "" /* databaseId can be (default) or empty */, docTempPath.c_str(), content.raw()))
     {
@@ -165,22 +168,28 @@ void sendDataToFirebase(String label, float data)
 SensorData getDataFromSensor()
 {
   Serial.printf("\n-------------------------------------------------------------");
+  int sensorValue = analogRead(soil_moisture_sensor_pin);
+  int moisturePercentage = map(sensorValue, DRY_VALUE, WET_VALUE, 0, 100);
+  moisturePercentage = constrain(moisturePercentage, 0, 100);
+
   dht.begin();
   SensorData data;
   data.success = dht.getData();
-
+  delay(500); // try without delay
   if (data.success)
   {
     data.temperatureC = dht.getTemperature(); //  celsius
     data.humidity = dht.getHumidity();
+    data.moisture = moisturePercentage;
   }
   else
   {
     data.temperatureC = -1;
     data.humidity = -1;
+    data.moisture = -1;
     Serial.printf("Failed To sense data");
   }
-  Serial.printf("\nSensor Read       => Temprature %0.2f and Humidity => %d ", data.temperatureC, data.humidity); // 12
+  Serial.printf("\nSensor Read       => Temprature %0.2f and Humidity => %d and Moisture => %d ", data.temperatureC, data.humidity, data.moisture); // 12
   return data;
 }
 
@@ -217,7 +226,7 @@ void loop()
   {
     Serial.printf("\n");
     // Serial.print(timeSquare);
-    if (fireStoreCount < 2)
+    if (fireStoreCount < 5)
     {
       sendDataToFirebase("temprature", data.temperatureC);
       sendDataToFirebase("humidity", data.humidity);
@@ -225,6 +234,8 @@ void loop()
       sendDataToFirestore(timeSquare, "Temprature", data.temperatureC, fireStoreCount);
       Serial.printf("\n");
       sendDataToFirestore(timeSquare, "Humidity", data.humidity, fireStoreCount);
+      Serial.printf("\n");
+      sendDataToFirestore(timeSquare, "Moisture", data.moisture, fireStoreCount);
     }
     fireStoreCount++;
   }
