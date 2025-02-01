@@ -6,6 +6,7 @@
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
 #include "time.h"
+#include <ArduinoJson.h>
 
 String USER_NAME;
 #define USER_EMAIL "ayush@gmail.com"
@@ -61,9 +62,10 @@ String printLocalTime()
   }
   // Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
   char timeStr[32];
-  strftime(timeStr, sizeof(timeStr), "%d%B%Y::%H:%M", &timeinfo);
+  strftime(timeStr, sizeof(timeStr), "%d%B%Y", &timeinfo);
   return String(timeStr);
 }
+// "%d%B%Y::%H:%M" - last working
 
 void connectWifi()
 {
@@ -115,19 +117,15 @@ void authenticateUser()
   Serial.print("User Authenticated");
 }
 
-void sendDataToFirestore(String label, String key, float data, int dataCount)
+void sendDataToFirestore(String label, float Temp, int Humi, int mois, int dataCount)
 {
-  Serial.printf("Send to firestore => %s %0.2f", label, data); // 18
   if (Firebase.ready() && (millis() - sendDataPrevMillis > 60000 || sendDataPrevMillis == 0))
   {
-    String tempStr = "Data";
     FirebaseJson content;
-    // /ayush/Slots/Slot 1/Soil/Data/09January2025::11:33:10H1
-    // String docTempPath = USER_NAME + "/" + USER_EMAIL + "/Soil/" + label + key.charAt(0) + dataCount;
-    // String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + key.charAt(0) + dataCount;
-    // String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + key.charAt(0) + dataCount + "/" + key;
-    String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + tempStr.charAt(0) + dataCount + "/" + key;
-    content.set("fields/" + key + "/doubleValue", data);
+    String docTempPath = USER_NAME + "/Slots/Slot1/Soil/" + label + "/D" + dataCount;
+    content.set("fields/Humidity/doubleValue", Humi);
+    content.set("fields/Temprature/doubleValue", Temp);
+    content.set("fields/Moisture/doubleValue", mois);
 
     if (Firebase.Firestore.createDocument(&fbdo, "iot-devices-1f8c0", "" /* databaseId can be (default) or empty */, docTempPath.c_str(), content.raw()))
     {
@@ -193,9 +191,66 @@ SensorData getDataFromSensor()
   return data;
 }
 
+String readData()
+{
+  if (Firebase.ready() && signupOK)
+  {
+    String documentPath = "/led/propertie";
+    String mask = "status";
+
+    // If the document path contains space e.g. "a b c/d e f"
+    // It should encode the space as %20 then the path will be "a%20b%20c/d%20e%20f"
+
+    Serial.print("Get a document... ");
+
+    if (Firebase.Firestore.getDocument(&fbdo, "iot-devices-1f8c0", "", documentPath.c_str(), mask.c_str()))
+    {
+
+      // Serial.printf("ok\n%s\n\n", fbdo.payload().c_str());
+      Serial.print("led Status");
+      Serial.print(fbdo.payload().c_str());
+      String payload = fbdo.payload().c_str();
+      // Serial.print("Response: ");
+      // Serial.println(payload);
+      DynamicJsonDocument doc(1024);
+      DeserializationError error = deserializeJson(doc, payload);
+      if (error)
+      {
+        Serial.print("JSON parsing failed: ");
+        Serial.println(error.f_str());
+        return "Error"; // Return error message if parsing fails
+      }
+      const char *status = doc["fields"]["status"]["stringValue"];
+      // Serial.print("JSON parsing : ");
+      // Serial.print(String(status));
+      return String(status);
+    }
+    else
+    {
+
+      Serial.println(fbdo.errorReason());
+    }
+  }
+  return fbdo.payload().c_str();
+}
+void ledBlink(int isBtnpress, int pinno)
+{
+  if (isBtnpress == 0)
+  {
+    Serial.print("LED is ON\n");
+    digitalWrite(pinno, HIGH);
+  }
+  else
+  {
+    Serial.print("LED is OFF\n");
+    digitalWrite(pinno, LOW);
+  }
+  delay(5000);
+}
 void setup()
 {
   Serial.begin(115200);
+  pinMode(2, OUTPUT);
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   connectWifi();
   delay(1000);
@@ -226,16 +281,24 @@ void loop()
   {
     Serial.printf("\n");
     // Serial.print(timeSquare);
-    if (fireStoreCount < 5)
+    sendDataToFirebase("temprature", data.temperatureC);
+    sendDataToFirebase("humidity", data.humidity);
+    sendDataToFirestore(timeSquare, data.temperatureC, data.humidity, data.moisture, fireStoreCount);
+    Serial.printf("\n");
+    delay(2000);
+    String ledStatus = readData();
+    delay(2000);
+    Serial.print("Led Status is");
+    Serial.print(ledStatus);
+    if (ledStatus == "1")
     {
-      sendDataToFirebase("temprature", data.temperatureC);
-      sendDataToFirebase("humidity", data.humidity);
-
-      sendDataToFirestore(timeSquare, "Temprature", data.temperatureC, fireStoreCount);
-      Serial.printf("\n");
-      sendDataToFirestore(timeSquare, "Humidity", data.humidity, fireStoreCount);
-      Serial.printf("\n");
-      sendDataToFirestore(timeSquare, "Moisture", data.moisture, fireStoreCount);
+      Serial.print("High Pin execute ");
+      digitalWrite(2, HIGH); // Turn on the LED
+    }
+    if (ledStatus == "0")
+    {
+      Serial.print("Low Pin execute ");
+      digitalWrite(2, LOW); // Turn off the LED
     }
     fireStoreCount++;
   }
